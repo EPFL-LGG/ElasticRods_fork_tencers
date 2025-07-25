@@ -9,7 +9,6 @@
 #include "../compute_equilibrium.hh"
 #include "../LinkageOptimization.hh"
 #include "../restlen_solve.hh"
-#include "../knitro_solver.hh"
 #include "../linkage_deformation_analysis.hh"
 #include "../DeploymentPathAnalysis.hh"
 
@@ -98,6 +97,14 @@ PYBIND11_MODULE(elastic_rods, m) {
         .def_readwrite("vtxStencilMask",  &GradientStencilMaskCustom::vtxStencilMask)
         ;
 
+    py::class_<HessianComputationMask>(m, "HessianComputationMask")
+        .def(py::init<>())
+        .def_readwrite("defoVars_in",  &HessianComputationMask::dof_in)
+        .def_readwrite("defoVars_out", &HessianComputationMask::dof_out)
+        .def_readwrite("restVars_in",  &HessianComputationMask::restlen_in)
+        .def_readwrite("restVars_out", &HessianComputationMask::restlen_out)
+        ;
+
     elastic_rod.def(py::init<std::vector<Point3D>>())
         .def("__repr__", [](const ElasticRod &e) { return "Elastic rod with " + std::to_string(e.numVertices()) + " points and " + std::to_string(e.numEdges()) + " edges"; })
         .def("setDeformedConfiguration", py::overload_cast<const std::vector<Point3D> &, const std::vector<Real> &>(&ElasticRod::setDeformedConfiguration))
@@ -154,6 +161,14 @@ PYBIND11_MODULE(elastic_rods, m) {
 
         .def("restLength",   &ElasticRod::restLength)
         .def("restLengths",  &ElasticRod::restLengths)
+        .def("setRestLengths",  &ElasticRod::setRestLengths, py::arg("restLengths"))
+
+        .def("restDirectors", &ElasticRod::restDirectors)
+        .def("setRestDirectors", &ElasticRod::setRestDirectors)
+
+        .def("restTwists", &ElasticRod::restTwists)
+        .def("setRestTwists", &ElasticRod::setRestTwists)
+
         // Determine the deformed position at curve parameter 0.5
         .def_property_readonly("midpointPosition", [](const ElasticRod &e) -> Point3D {
                 size_t ne = e.numEdges();
@@ -185,6 +200,7 @@ PYBIND11_MODULE(elastic_rods, m) {
 
         .def("hessianNNZ",             &ElasticRod::hessianNNZ,             "Tight upper bound for nonzeros in the Hessian.", py::arg("variableRestLen") = false)
         .def("hessianSparsityPattern", &ElasticRod::hessianSparsityPattern, "Compressed column matrix containing all potential nonzero Hessian entries", py::arg("variableRestLen") = false, py::arg("val") = 0.0)
+        .def("applyHessian", &ElasticRod::applyHessian, py::arg("direction"), py::arg("variableRestLen") = false, py::arg("mask") = HessianComputationMask())
 
         .def("hessian",           [](const ElasticRod &e, ElasticRod::EnergyType eType, bool variableRestLen) { return e.hessian(eType, variableRestLen); }, "Compute elastic energy Hessian", py::arg("energyType") = ElasticRod::EnergyType::Full, py::arg("variableRestLen") = false)
         .def("massMatrix",        py::overload_cast<>(&ElasticRod::massMatrix, py::const_))
@@ -257,6 +273,7 @@ PYBIND11_MODULE(elastic_rods, m) {
 
     py::class_<ElasticRod::DeformedState>(elastic_rod, "DeformedState")
         .def("__repr__", [](const ElasticRod::DeformedState &) { return "Deformed state of an elastic rod (ElasticRod::DeformedState)."; })
+        .def("initialize_from_data", &ElasticRod::DeformedState::initialize_from_data)
         .def_readwrite("referenceDirectors", &ElasticRod::DeformedState::referenceDirectors)
         .def_readwrite("referenceTwist",     &ElasticRod::DeformedState::referenceTwist)
         .def_readwrite("tangent",            &ElasticRod::DeformedState::tangent)
@@ -266,6 +283,7 @@ PYBIND11_MODULE(elastic_rods, m) {
         .def_readwrite("len",                &ElasticRod::DeformedState::len)
 
         .def_readwrite("sourceTangent"           , &ElasticRod::DeformedState::sourceTangent)
+        .def_readwrite("sourceTheta"             , &ElasticRod::DeformedState::sourceTheta)
         .def_readwrite("sourceReferenceDirectors", &ElasticRod::DeformedState::sourceReferenceDirectors)
         .def_readwrite("sourceMaterialFrame"     , &ElasticRod::DeformedState::sourceMaterialFrame)
         .def_readwrite("sourceReferenceTwist"    , &ElasticRod::DeformedState::sourceReferenceTwist)
@@ -294,6 +312,7 @@ PYBIND11_MODULE(elastic_rods, m) {
         ;
 
     py::class_<ElasticRod::Directors>(elastic_rod, "Directors")
+        .def(py::init<Vector3D,Vector3D>(),py::arg("d1"),py::arg("d2"))
         .def("__repr__", [](const ElasticRod::Directors &dirs) { return "{ d1: [" + to_string_with_precision(dirs.d1.transpose()) + "], d2: [" + to_string_with_precision(dirs.d2.transpose()) + "] }"; })
         .def_readwrite("d1", &ElasticRod::Directors::d1)
         .def_readwrite("d2", &ElasticRod::Directors::d2)
@@ -327,6 +346,7 @@ PYBIND11_MODULE(elastic_rods, m) {
         .def_readwrite("stretchingStiffness",       &RodMaterial::stretchingStiffness)
         .def_readwrite("twistingStiffness",         &RodMaterial::twistingStiffness)
         .def_readwrite("torsionStressCoefficient",  &RodMaterial::torsionStressCoefficient)
+        .def_readwrite("youngModulus",              &RodMaterial::youngModulus)
         .def_readwrite("bendingStiffness",          &RodMaterial::bendingStiffness)
         .def_readwrite("momentOfInertia",           &RodMaterial::momentOfInertia)
         .def_readwrite("crossSectionBoundaryPts",   &RodMaterial::crossSectionBoundaryPts)
@@ -435,10 +455,11 @@ PYBIND11_MODULE(elastic_rods, m) {
                 ElasticRod::TMatrix Htrip = H.getTripletMatrix();
                 Htrip.symmetry_mode = ElasticRod::TMatrix::SymmetryMode::UPPER_TRIANGLE;
                 return Htrip; },  py::arg("energyType") = ElasticRod::EnergyType::Full)
+        .def("applyHessian", &PeriodicRod::applyHessian, py::arg("direction"), py::arg("mask") = HessianComputationMask())
         .def("thetaOffset",  &PeriodicRod::thetaOffset)
         .def_readonly("rod", &PeriodicRod::rod, py::return_value_policy::reference)
         .def_property("totalOpeningAngle", &PeriodicRod::totalOpeningAngle, &PeriodicRod::setTotalOpeningAngle, "Twist discontinuity passing from last edge back to (overlapping) first")
-        .def(py::pickle([](const PeriodicRod &pr) { return py::make_tuple(pr.rod, pr.twist()); },
+        .def(py::pickle([](const PeriodicRod &pr) { return py::make_tuple(pr.rod, pr.totalOpeningAngle()); },
                         [](const py::tuple &t) {
                             if (t.size() != 2) throw std::runtime_error("Invalid state!");
                             PeriodicRod pr(t[0].cast<ElasticRod>(), t[1].cast<Real>());
@@ -715,56 +736,6 @@ PYBIND11_MODULE(elastic_rods, m) {
           py::arg("targetAverageAngle") = TARGET_ANGLE_NONE,
           py::arg("fixedVars") = std::vector<size_t>()
     );
-#if HAS_KNITRO
-    m.def("compute_equilibrium_knitro",
-          [](RodLinkage &linkage, size_t niter, int /* verbose */, const std::vector<size_t> &fixedVars, Real gradTol) {
-              py::scoped_ostream_redirect stream1(std::cout, py::module::import("sys").attr("stdout"));
-              py::scoped_ostream_redirect stream2(std::cerr, py::module::import("sys").attr("stderr"));
-              knitro_compute_equilibrium(linkage, niter, fixedVars, gradTol);
-          },
-          py::arg("linkage"),
-          py::arg("niter") = 100,
-          py::arg("verbose") = 0,
-          py::arg("fixedVars") = std::vector<size_t>(),
-          py::arg("gradTol") = 2e-8
-    );
-    m.def("compute_equilibrium_knitro",
-          [](ElasticRod &rod, size_t niter, int /* verbose */, const std::vector<size_t> &fixedVars, Real gradTol) {
-              py::scoped_ostream_redirect stream1(std::cout, py::module::import("sys").attr("stdout"));
-              py::scoped_ostream_redirect stream2(std::cerr, py::module::import("sys").attr("stderr"));
-              knitro_compute_equilibrium(rod, niter, fixedVars, gradTol);
-          },
-          py::arg("rod"),
-          py::arg("niter") = 100,
-          py::arg("verbose") = 0,
-          py::arg("fixedVars") = std::vector<size_t>(),
-          py::arg("gradTol") = 2e-8
-    );
-    m.def("restlen_solve_knitro",
-          [](RodLinkage &linkage, Real laplacianRegWeight, size_t niter, const std::vector<size_t> &fixedVars, Real gradTol) {
-              py::scoped_ostream_redirect stream1(std::cout, py::module::import("sys").attr("stdout"));
-              py::scoped_ostream_redirect stream2(std::cerr, py::module::import("sys").attr("stderr"));
-              knitro_restlen_solve(linkage, laplacianRegWeight, niter, fixedVars, gradTol);
-          },
-          py::arg("linkage"),
-          py::arg("laplacianRegWeight") = 1.0,
-          py::arg("niter") = 100,
-          py::arg("fixedVars") = std::vector<size_t>(),
-          py::arg("gradTol") = 2e-8
-    );
-    m.def("restlen_solve_knitro",
-          [](ElasticRod &rod, Real laplacianRegWeight, size_t niter, const std::vector<size_t> &fixedVars, Real gradTol) {
-              py::scoped_ostream_redirect stream1(std::cout, py::module::import("sys").attr("stdout"));
-              py::scoped_ostream_redirect stream2(std::cerr, py::module::import("sys").attr("stderr"));
-              knitro_restlen_solve(rod, laplacianRegWeight, niter, fixedVars, gradTol);
-          },
-          py::arg("rod"),
-          py::arg("laplacianRegWeight") = 1.0,
-          py::arg("niter") = 100,
-          py::arg("fixedVars") = std::vector<size_t>(),
-          py::arg("gradTol") = 2e-8
-    );
-#endif // HAS_KNITRO
 
     ////////////////////////////////////////////////////////////////////////////////
     // Analysis

@@ -130,23 +130,6 @@ set_target_properties(RodLinkages PROPERTIES CXX_STANDARD_REQUIRED ON)
 target_include_directories(RodLinkages SYSTEM PUBLIC .)
 
 ################################################################################
-# Third Party Libraries
-################################################################################
-# Knitro
-find_package(Knitro QUIET)
-if(KNITRO_FOUND)
-    target_include_directories(ElasticRods SYSTEM PUBLIC ${KNITRO_INCLUDE_DIRS})
-    target_link_libraries(ElasticRods ${KNITRO_LIBRARIES})
-    target_compile_definitions(ElasticRods PUBLIC -DHAS_KNITRO)
-
-    target_include_directories(RodLinkages SYSTEM PUBLIC ${KNITRO_INCLUDE_DIRS})
-    target_link_libraries(RodLinkages ${KNITRO_LIBRARIES})
-    target_compile_definitions(RodLinkages PUBLIC -DHAS_KNITRO)
-else()
-    message(STATUS "Knitro not found; knitro solvers and dependent binaries disabled")
-endif()
-
-################################################################################
 # Python Bindings
 ################################################################################
 add_subdirectory(python_bindings)

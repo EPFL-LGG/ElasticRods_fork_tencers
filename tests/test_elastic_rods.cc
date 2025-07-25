@@ -6,7 +6,6 @@
 #include "../CrossSectionMesh.hh"
 #include <MeshFEM/GaussQuadrature.hh>
 #include "../compute_equilibrium.hh"
-#include "../knitro_solver.hh"
 #include <MeshFEM/AutomaticDifferentiation.hh>
 
 // Generate random number in the range [-1, 1]
@@ -537,10 +536,6 @@ int main(int argc, const char * argv[]) {
                                             11,
                                             // 12,
                                             14 };
-
-#if HAS_KNITRO
-    knitro_compute_equilibrium(e, niter, fixedVars);
-#endif
 
     return 0;
 

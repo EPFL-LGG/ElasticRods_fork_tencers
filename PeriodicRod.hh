@@ -141,6 +141,18 @@ struct PeriodicRod_T {
         return unreducedDoFs;
     }
 
+    VecX applyJacobianTransposed(const Eigen::Ref<const VecX> &unreducedDoFs) const {
+        if (size_t(unreducedDoFs.size()) != rod.numDoF()) throw std::runtime_error("Unreduced DoF vector has incorrect length.");       
+        VecX dofs(numDoF());
+        dofs.head   (3 * (rod.numVertices() - 2))                     = unreducedDoFs.head   (3 * (rod.numVertices() - 2));
+        dofs.segment(3 * (rod.numVertices() - 2), rod.numEdges() - 1) = unreducedDoFs.segment(3 * rod.numVertices(), rod.numEdges() - 1);
+        dofs.template segment<6>(0) += unreducedDoFs.template segment<6>(3 * (rod.numVertices() - 2));
+        Real_ theta_nem1 = unreducedDoFs[unreducedDoFs.size() - 1];
+        dofs[3 * (rod.numVertices() - 2)] += theta_nem1;
+        dofs[dofs.size() - 1]              = theta_nem1;
+        return dofs;
+    }
+
     void setDoFs(const Eigen::Ref<const VecX> &dofs) {
         m_totalOpeningAngle = dofs[dofs.size() - 1];
         rod.setDoFs(applyJacobian(dofs));
@@ -254,6 +266,10 @@ struct PeriodicRod_T {
         CSCMat H;
         hessian(H, etype);
         return H;
+    }
+
+    VecX applyHessian(const VecX &v, const HessianComputationMask &mask = HessianComputationMask()) const {
+        return applyJacobianTransposed(rod.applyHessian(applyJacobian(v), false, mask));
     }
 
     // Note: the "lumped mass matrix" is not perfectly diagonal due to the "totalOpeningAngle" variable's

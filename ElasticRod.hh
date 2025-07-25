@@ -412,6 +412,7 @@ struct ElasticRod_T {
 
     VecX applyHessian(const VecX &v, bool variableRestLen = false, const HessianComputationMask &mask = HessianComputationMask()) const {
         VecX result(v.size());
+        result.setZero();
         applyHessEnergy(v, result, variableRestLen, mask);
         return result;
     }
@@ -590,6 +591,7 @@ struct ElasticRod_T {
     struct DeformedState {
         // Initialize/reset to the identity deformation for a particular rod.
         void initialize(const ElasticRod_T &rod);
+        void initialize_from_data(std::vector<Pt3> rest_points, std::vector<Directors> sourceRefDirectors,std::vector<Vec3> sourceTgt);
         void update(const std::vector<Pt3> &points, const std::vector<Real_> &thetas);
 
         const std::vector<Pt3  > &points() const { return m_point; }

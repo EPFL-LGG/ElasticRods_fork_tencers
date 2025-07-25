@@ -135,6 +135,15 @@ void ElasticRod_T<Real_>::DeformedState::initialize(const ElasticRod_T &rod) {
     update(rod.m_restPoints, sourceTheta);
 }
 
+
+// For loading from a json file
+template<typename Real_>
+void ElasticRod_T<Real_>::DeformedState::initialize_from_data(std::vector<Pt3> rest_points, std::vector<Directors> sourceRefDirectors, std::vector<Vec3> sourceTgt){
+    sourceReferenceDirectors = sourceRefDirectors;
+    sourceTangent = sourceTgt;
+    update(rest_points, sourceTheta);
+}
+
 // Constructor for cached deformed quantities.
 template<typename Real_>
 void ElasticRod_T<Real_>::DeformedState::update(const std::vector<Pt3_T<Real_>> &points, const std::vector<Real_> &thetas) {
