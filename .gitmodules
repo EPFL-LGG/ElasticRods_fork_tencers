@@ -11,5 +11,5 @@
 	path = 3rdparty/spectra
 	url = https://github.com/yixuan/spectra
 [submodule "3rdparty/MeshFEM_fork_tencers"]
-	path = 3rdparty/MeshFEM_fork_tencers
+	path = 3rdparty/MeshFEM
 	url = https://github.com/EPFL-LGG/MeshFEM_fork_tencers.git
