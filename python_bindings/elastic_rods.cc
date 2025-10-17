@@ -457,7 +457,7 @@ PYBIND11_MODULE(elastic_rods, m) {
                 return Htrip; },  py::arg("energyType") = ElasticRod::EnergyType::Full)
         .def("applyHessian", &PeriodicRod::applyHessian, py::arg("direction"), py::arg("mask") = HessianComputationMask())
         .def("thetaOffset",  &PeriodicRod::thetaOffset)
-        .def_readonly("rod", &PeriodicRod::rod, py::return_value_policy::reference)
+        .def_readonly("rod", &PeriodicRod::rod)
         .def_property("totalOpeningAngle", &PeriodicRod::totalOpeningAngle, &PeriodicRod::setTotalOpeningAngle, "Twist discontinuity passing from last edge back to (overlapping) first")
         .def(py::pickle([](const PeriodicRod &pr) { return py::make_tuple(pr.rod, pr.totalOpeningAngle()); },
                         [](const py::tuple &t) {
